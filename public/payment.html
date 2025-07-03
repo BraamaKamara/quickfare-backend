@@ -1,0 +1,65 @@
+<!-- public/payment.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QuickFare Payment</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #f4f7fa; }
+    input, button { padding: 10px; margin: 10px 0; width: 100%; max-width: 300px; }
+    .status { margin-top: 1rem; font-weight: bold; color: green; }
+    .error { color: red; }
+  </style>
+</head>
+<body>
+
+  <h2>Confirm Your Payment</h2>
+  <div id="tripDetails">Loading trip details...</div>
+
+  <input type="text" id="phone" placeholder="Enter your phone number" />
+  <button onclick="submitPayment()">Confirm Payment</button>
+
+  <div class="status" id="status"></div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const tripId = params.get("tripId");
+    const amount = params.get("amount");
+
+    document.getElementById("tripDetails").innerText = `Trip ID: ${tripId}, Fare: ZMW ${amount}`;
+
+    async function submitPayment() {
+      const phone = document.getElementById("phone").value;
+      const status = document.getElementById("status");
+
+      if (!phone || phone.length < 10) {
+        status.className = "status error";
+        status.innerText = "❌ Enter a valid phone number.";
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/payments/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tripId, amount, phone, paymentMethod: "QR" }),
+        });
+
+        const result = await response.json();
+        if (response.ok) {
+          status.className = "status";
+          status.innerText = result.message || "✅ Payment successful.";
+        } else {
+          status.className = "status error";
+          status.innerText = "❌ " + (result.error || "Payment failed.");
+        }
+      } catch (err) {
+        console.error(err);
+        status.className = "status error";
+        status.innerText = "❌ Error submitting payment.";
+      }
+    }
+  </script>
+
+</body>
+</html>

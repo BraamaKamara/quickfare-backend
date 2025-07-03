@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>QuickFare Admin Dashboard</title>
+  <style>
+    body { font-family: Arial; padding: 20px; background-color: #f4f4f4; }
+    h1 { color: #333; }
+    .section { background: #fff; padding: 20px; margin-bottom: 20px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .entry-box {
+      background-color: #fefefe;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-left: 5px solid #007BFF;
+    }
+    .input { margin: 5px 0; padding: 5px; width: 250px; display: block; }
+    button { padding: 6px 12px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>QuickFare Admin Dashboard</h1>
+
+  <!-- 🔐 Admin Login -->
+  <div class="section">
+    <h2>Admin Login</h2>
+    <form id="loginForm">
+      <input class="input" type="email" id="email" placeholder="Email" required>
+      <input class="input" type="password" id="password" placeholder="Password" required>
+      <button type="submit">Login</button>
+    </form>
+    <div id="loginMessage" style="margin-top: 1em;"></div>
+  </div>
+
+  <!-- 🛡️ Admin Management Section -->
+  <div class="section">
+    <h2>Admin Users</h2>
+
+    <!-- Add New Admin -->
+    <form id="adminForm">
+      <input class="input" type="text" id="adminFullName" placeholder="Full Name" required>
+      <input class="input" type="email" id="adminEmail" placeholder="Email" required>
+      <input class="input" type="password" id="adminPassword" placeholder="Password" required>
+      <button type="submit">Add Admin</button>
+    </form>
+    <div id="adminResponse" style="margin-top: 1em;"></div>
+
+    <!-- List of Admin Users -->
+    <h3 style="margin-top:2em;">Existing Admins</h3>
+    <div id="adminList"></div>
+  </div>
+
+  <!-- 💳 Payment Filters -->
+  <div class="section">
+    <h2>Filter Payments</h2>
+    <input class="input" id="tripId" placeholder="Filter by Trip ID">
+    <input class="input" id="paymentMethod" placeholder="Filter by Method (e.g. MTN)">
+    <input class="input" id="payerPhone" placeholder="Filter by Phone">
+    <button onclick="fetchPayments()">Fetch Payments</button>
+  </div>
+
+  <!-- 💰 Payment Submission -->
+  <div class="section">
+    <h2>Add New Payment</h2>
+    <form id="paymentForm">
+      <input class="input" type="number" id="tripIdInput" placeholder="Trip ID" required>
+      <input class="input" type="number" id="amountPaid" placeholder="Amount Paid" required>
+      <input class="input" type="text" id="paymentMethodInput" placeholder="Payment Method" required>
+      <input class="input" type="text" id="payerPhoneInput" placeholder="Payer Phone" required>
+      <button type="submit">Submit Payment</button>
+    </form>
+    <div id="paymentResponse" style="margin-top: 1em;"></div>
+  </div>
+
+  <!-- 🚌 Trip Management -->
+  <div class="section">
+    <h2>Trip Management</h2>
+    <form id="tripForm">
+      <input class="input" type="text" id="tripOrigin" placeholder="Trip Origin" required>
+      <input class="input" type="text" id="tripDestination" placeholder="Trip Destination" required>
+      <input class="input" type="number" id="tripFare" placeholder="Fare (ZMW)" required>
+      <input class="input" type="date" id="tripDate" required>
+      <input class="input" type="time" id="tripTime" required>
+      <select class="input" id="tripRouteSelect" required>
+        <option value="">-- Select Route --</option>
+      </select>
+      <button type="submit" id="submitTripBtn">Create Trip</button>
+      <button type="button" id="cancelEditBtn" style="display: none;">Cancel Edit</button>
+    </form>
+    <div id="tripCreateMessage" style="margin-top: 1em;"></div>
+
+    <h3 style="margin-top:2em;">Existing Trips</h3>
+    <div id="tripList"></div>
+  </div>
+
+  <!-- 🚏 Route Management -->
+  <div class="section">
+    <h2>Route Management</h2>
+    <form id="routeForm">
+      <input class="input" type="text" id="routeOrigin" placeholder="Route Origin" required>
+      <input class="input" type="text" id="routeDestination" placeholder="Route Destination" required>
+      <button type="submit">Add Route</button>
+      <button type="button" id="cancelRouteEditBtn" style="display: none;">Cancel Edit</button>
+    </form>
+    <div id="routeMessage" style="margin-top: 1em;"></div>
+
+    <h3 style="margin-top:2em;">All Routes</h3>
+    <div id="routeList"></div>
+  </div>
+
+  <!-- 📋 Results Section -->
+  <div class="section" id="results"></div>
+
+  <script>
+    function getToken() {
+      return localStorage.getItem('authToken');
+    }
+
+    // Login
+    document.getElementById('loginForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        const res = await fetch('http://localhost:5000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await res.json();
+        const messageDiv = document.getElementById('loginMessage');
+
+        if (res.ok) {
+          localStorage.setItem('authToken', data.token);
+          messageDiv.innerText = '✅ Login successful!';
+          loadTrips();
+          loadRoutesForTripForm();
+          loadAllRoutes();
+          loadAdmins();
+        } else {
+          messageDiv.innerText = `❌ ${data.message}`;
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('loginMessage').innerText = '❌ Server error.';
+      }
+    });
+
+    // Load Trips (with Edit & Delete buttons)
+    async function loadTrips() {
+      const res = await fetch('http://localhost:5000/api/trips', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      const trips = await res.json();
+      const container = document.getElementById('tripList');
+      container.innerHTML = '';
+
+      trips.forEach(trip => {
+        const div = document.createElement('div');
+        div.className = 'entry-box';
+        div.innerHTML = `
+          <strong>From:</strong> ${trip.origin} ➔ ${trip.destination}<br>
+          <strong>Fare:</strong> ZMW ${trip.fare}<br>
+          <strong>Date:</strong> ${trip.date}<br>
+          <strong>Time:</strong> ${trip.time}<br>
+          <strong>Route:</strong> ${trip.route?.origin} ➔ ${trip.route?.destination}<br>
+          <button onclick="editTrip(${trip.id})">✏️ Edit</button>
+          <button onclick="deleteTrip(${trip.id})">🗑️ Delete</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // Edit Trip
+    async function editTrip(tripId) {
+      try {
+        const res = await fetch(`http://localhost:5000/api/trips/${tripId}`, {
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+        const trip = await res.json();
+
+        document.getElementById('tripOrigin').value = trip.origin;
+        document.getElementById('tripDestination').value = trip.destination;
+        document.getElementById('tripFare').value = trip.fare;
+        document.getElementById('tripDate').value = trip.date ? trip.date.split('T')[0] : '';
+        document.getElementById('tripTime').value = trip.time;
+        document.getElementById('tripRouteSelect').value = trip.routeId;
+
+        const form = document.getElementById('tripForm');
+        form.dataset.editingId = tripId;
+        document.getElementById('tripCreateMessage').innerText = `✏️ Editing Trip ID: ${tripId}`;
+        document.getElementById('submitTripBtn').innerText = 'Update Trip';
+        document.getElementById('cancelEditBtn').style.display = 'inline-block';
+      } catch (err) {
+        console.error(err);
+        alert('❌ Failed to load trip for editing.');
+      }
+    }
+
+    // Cancel Edit Button Handler
+    document.getElementById('cancelEditBtn').addEventListener('click', () => {
+      const form = document.getElementById('tripForm');
+      form.reset();
+      delete form.dataset.editingId;
+
+      document.getElementById('submitTripBtn').innerText = 'Create Trip';
+      document.getElementById('tripCreateMessage').innerText = '';
+      document.getElementById('cancelEditBtn').style.display = 'none';
+    });
+
+    async function deleteTrip(tripId) {
+      if (!confirm(`Are you sure you want to delete trip ID ${tripId}?`)) return;
+
+      try {
+        const res = await fetch(`http://localhost:5000/api/trips/${tripId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+
+        if (res.ok) {
+          alert('✅ Trip deleted.');
+          loadTrips(); // refresh trip list
+        } else {
+          const data = await res.json();
+          alert(`❌ Failed: ${data.message}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('❌ Server error.');
+      }
+    }
+
+    // Load Routes
+    async function loadRoutesForTripForm() {
+      const res = await fetch('http://localhost:5000/api/routes', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      const routes = await res.json();
+      const select = document.getElementById('tripRouteSelect');
+      select.innerHTML = '<option value="">-- Select Route --</option>';
+      routes.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.id;
+        opt.textContent = `${r.origin} ➔ ${r.destination}`;
+        select.appendChild(opt);
+      });
+    }
+
+    async function loadAllRoutes() {
+      const res = await fetch('http://localhost:5000/api/routes', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      const routes = await res.json();
+      const container = document.getElementById('routeList');
+      container.innerHTML = '';
+      routes.forEach(route => {
+        const div = document.createElement('div');
+        div.className = 'entry-box';
+        div.innerHTML = `
+          <strong>${route.origin}</strong> ➔ <strong>${route.destination}</strong><br>
+          <button onclick="editRoute(${route.id})">✏️ Edit</button>
+          <button onclick="deleteRoute(${route.id})">🗑️ Delete</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function editRoute(routeId) {
+      try {
+        const res = await fetch(`http://localhost:5000/api/routes/${routeId}`, {
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+        const route = await res.json();
+
+        document.getElementById('routeOrigin').value = route.origin;
+        document.getElementById('routeDestination').value = route.destination;
+
+        const form = document.getElementById('routeForm');
+        form.dataset.editingId = routeId;
+
+        document.querySelector('#routeForm button[type="submit"]').innerText = 'Update Route';
+        document.getElementById('cancelRouteEditBtn').style.display = 'inline-block';
+        document.getElementById('routeMessage').innerText = `✏️ Editing Route ID: ${routeId}`;
+      } catch (err) {
+        console.error(err);
+        alert('❌ Failed to load route for editing.');
+      }
+    }
+
+    // Load Admins
+    async function loadAdmins() {
+      const res = await fetch('http://localhost:5000/api/admins', {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      const admins = await res.json();
+      const container = document.getElementById('adminList');
+      container.innerHTML = '';
+      admins.forEach(admin => {
+        const div = document.createElement('div');
+        div.className = 'entry-box';
+        div.innerHTML = `<strong>${admin.fullName}</strong> — ${admin.email}`;
+        container.appendChild(div);
+      });
+    }
+
+    // Add Admin
+    document.getElementById('adminForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const fullName = document.getElementById('adminFullName').value;
+      const email = document.getElementById('adminEmail').value;
+      const password = document.getElementById('adminPassword').value;
+
+      try {
+        const res = await fetch('http://localhost:5000/api/admins', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify({ fullName, email, password })
+        });
+
+        const data = await res.json();
+        const msg = document.getElementById('adminResponse');
+
+        if (res.ok) {
+          msg.innerText = '✅ Admin added!';
+          document.getElementById('adminForm').reset();
+          loadAdmins();
+        } else {
+          msg.innerText = `❌ ${data.message}`;
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('adminResponse').innerText = '❌ Server error.';
+      }
+    });
+
+    // Payments
+    document.getElementById('paymentForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const tripId = document.getElementById('tripIdInput').value;
+      const amountPaid = document.getElementById('amountPaid').value;
+      const paymentMethod = document.getElementById('paymentMethodInput').value;
+      const payerPhone = document.getElementById('payerPhoneInput').value;
+
+      try {
+        const res = await fetch('http://localhost:5000/api/payments', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify({ tripId, amountPaid, paymentMethod, payerPhone })
+        });
+
+        const data = await res.json();
+        const msg = document.getElementById('paymentResponse');
+
+        if (res.ok) {
+          msg.innerText = '✅ Payment submitted!';
+          document.getElementById('paymentForm').reset();
+          fetchPayments();
+        } else {
+          msg.innerText = `❌ ${data.message}`;
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('paymentResponse').innerText = '❌ Server error.';
+      }
+    });
+
+    async function fetchPayments() {
+      const tripId = document.getElementById('tripId').value;
+      const paymentMethod = document.getElementById('paymentMethod').value;
+      const payerPhone = document.getElementById('payerPhone').value;
+
+      let url = 'http://localhost:5000/api/payments';
+      const params = new URLSearchParams();
+      if (tripId) params.append('tripId', tripId);
+      if (paymentMethod) params.append('paymentMethod', paymentMethod);
+      if (payerPhone) params.append('payerPhone', payerPhone);
+      if (params.toString()) url += `?${params.toString()}`;
+
+      try {
+        const res = await fetch(url, {
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+
+        const data = await res.json();
+        const container = document.getElementById('results');
+        container.innerHTML = '';
+
+        if (Array.isArray(data)) {
+          data.forEach(p => {
+            const div = document.createElement('div');
+            div.className = 'entry-box';
+            div.innerHTML = `
+              <strong>Amount:</strong> ZMW ${p.amountPaid}<br>
+              <strong>Method:</strong> ${p.paymentMethod}<br>
+              <strong>Phone:</strong> ${p.payerPhone}<br>
+              <strong>Trip:</strong> ${p.trip?.origin} ➔ ${p.trip?.destination} @ ${p.trip?.time}
+            `;
+            container.appendChild(div);
+          });
+        } else {
+          container.innerHTML = `<p style="color:red;">Error: ${data.message}</p>`;
+        }
+      } catch (error) {
+        console.error(error);
+        document.getElementById('results').innerText = '❌ Failed to fetch payments.';
+      }
+    }
+
+    // Trip Form Submission (Add or Update)
+    document.getElementById('tripForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const tripId = e.target.dataset.editingId || null;
+
+      const body = {
+        origin: document.getElementById('tripOrigin').value,
+        destination: document.getElementById('tripDestination').value,
+        fare: document.getElementById('tripFare').value,
+        date: document.getElementById('tripDate').value,
+        time: document.getElementById('tripTime').value,
+        routeId: document.getElementById('tripRouteSelect').value
+      };
+
+      const url = tripId
+        ? `http://localhost:5000/api/trips/${tripId}`
+        : 'http://localhost:5000/api/trips';
+
+      const method = tripId ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+        const msg = document.getElementById('tripCreateMessage');
+
+        if (res.ok) {
+          msg.innerText = tripId ? '✅ Trip updated!' : '✅ Trip created!';
+          document.getElementById('submitTripBtn').innerText = 'Create Trip';
+          document.getElementById('cancelEditBtn').style.display = 'none';
+
+          e.target.reset();
+          delete e.target.dataset.editingId; // clear editing state
+          loadTrips();
+        } else {
+          msg.innerText = `❌ ${data.message}`;
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('tripCreateMessage').innerText = '❌ Server error.';
+      }
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const token = getToken();
+      if (token) {
+        loadTrips();
+        loadRoutesForTripForm();
+        loadAllRoutes();
+        loadAdmins();
+      }
+    });
+
+    // Cancel Route Edit Button
+    document.getElementById('cancelRouteEditBtn').addEventListener('click', () => {
+      const form = document.getElementById('routeForm');
+      form.reset();
+      delete form.dataset.editingId;
+
+      document.querySelector('#routeForm button[type="submit"]').innerText = 'Add Route';
+      document.getElementById('routeMessage').innerText = '';
+      document.getElementById('cancelRouteEditBtn').style.display = 'none';
+    });
+
+    // Route Form Submission (Add or Update) with improved error handling
+    document.getElementById('routeForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const routeId = e.target.dataset.editingId || null;
+
+      const body = {
+        origin: document.getElementById('routeOrigin').value,
+        destination: document.getElementById('routeDestination').value
+      };
+
+      const url = routeId
+        ? `http://localhost:5000/api/routes/${routeId}`
+        : 'http://localhost:5000/api/routes';
+
+      const method = routeId ? 'PUT' : 'POST';
+
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify(body)
+        });
+
+        // Improved error handling: try parsing JSON, if fails, read text for debugging
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseErr) {
+          const text = await res.text();
+          console.error('Response not JSON:', text);
+          throw new Error('Server returned non-JSON response');
+        }
+
+        const msg = document.getElementById('routeMessage');
+
+        if (res.ok) {
+          msg.innerText = routeId ? '✅ Route updated!' : '✅ Route added!';
+          e.target.reset();
+          delete e.target.dataset.editingId;
+          document.querySelector('#routeForm button[type="submit"]').innerText = 'Add Route';
+          document.getElementById('cancelRouteEditBtn').style.display = 'none';
+          loadAllRoutes();
+        } else {
+          msg.innerText = `❌ ${data.message}`;
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('routeMessage').innerText = '❌ Server error.';
+      }
+    });
+
+    // Delete Route
+    async function deleteRoute(routeId) {
+      if (!confirm(`Are you sure you want to delete route ID ${routeId}?`)) return;
+
+      try {
+        const res = await fetch(`http://localhost:5000/api/routes/${routeId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${getToken()}` }
+        });
+
+        if (res.ok) {
+          alert('✅ Route deleted.');
+          loadAllRoutes();
+        } else {
+          const data = await res.json();
+          alert(`❌ Failed: ${data.message}`);
+        }
+      } catch (err) {
+        console.error(err);
+        alert('❌ Server error.');
+      }
+    }
+  </script>
+</body>
+</html>

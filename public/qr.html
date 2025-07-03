@@ -1,0 +1,97 @@
+<!-- public/qr.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>QuickFare - Trip QR Generator</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; padding: 20px; }
+    select, button { padding: 10px; font-size: 16px; margin: 10px; }
+    #qrImage { max-width: 300px; margin: 20px auto; display: none; }
+    #tripInfo { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Generate QR for Trip</h1>
+
+  <label for="tripSelect">Select Trip:</label>
+  <select id="tripSelect">
+    <option value="">-- Loading trips... --</option>
+  </select>
+
+  <div id="tripInfo"></div>
+  <img id="qrImage" src="" alt="QR Code" />
+  <br>
+
+  <a id="downloadLink" download="quickfare-qr.png">
+    <button id="downloadBtn" style="display:none;">📥 Download</button>
+  </a>
+  <button id="printBtn" style="display:none;" onclick="window.print()">🖨️ Print</button>
+
+  <script>
+    async function loadTrips() {
+      try {
+        const response = await fetch('/api/public-trips');
+        if (!response.ok) throw new Error('Failed to fetch trips');
+
+        const trips = await response.json();
+        const select = document.getElementById('tripSelect');
+        select.innerHTML = '<option value="">-- Select a trip --</option>';
+
+        trips.forEach(trip => {
+          const option = document.createElement('option');
+          option.value = trip.id;
+          option.textContent = `Trip ${trip.id}: ${trip.origin} → ${trip.destination} (ZMW ${trip.fare})`;
+          select.appendChild(option);
+        });
+
+        select.disabled = false;
+      } catch (err) {
+        console.error('❌ Failed to load trips:', err);
+        const select = document.getElementById('tripSelect');
+        select.innerHTML = '<option value="">⚠️ Could not load trips</option>';
+        select.disabled = true;
+      }
+    }
+
+    async function fetchQR(tripId) {
+      try {
+        const response = await fetch(`/api/qr/${tripId}`);
+        if (!response.ok) throw new Error('Failed to fetch QR');
+
+        const data = await response.json();
+
+        document.getElementById('qrImage').src = data.qrCode;
+        document.getElementById('qrImage').style.display = 'block';
+
+        document.getElementById('downloadLink').href = data.qrCode;
+        document.getElementById('downloadBtn').style.display = 'inline-block';
+        document.getElementById('printBtn').style.display = 'inline-block';
+
+        document.getElementById('tripInfo').innerHTML = `
+          <p><strong>From:</strong> ${data.trip.origin}</p>
+          <p><strong>To:</strong> ${data.trip.destination}</p>
+          <p><strong>Fare:</strong> ZMW ${data.trip.fare}</p>
+        `;
+      } catch (err) {
+        alert("❌ Failed to load QR code.");
+        console.error(err);
+      }
+    }
+
+    document.getElementById('tripSelect').addEventListener('change', function () {
+      const tripId = this.value;
+      if (tripId) {
+        fetchQR(tripId);
+      } else {
+        document.getElementById('qrImage').style.display = 'none';
+        document.getElementById('tripInfo').innerHTML = '';
+        document.getElementById('downloadBtn').style.display = 'none';
+        document.getElementById('printBtn').style.display = 'none';
+      }
+    });
+
+    loadTrips();
+  </script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuickFare Payment</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      background: #f4f4f4;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      max-width: 400px;
+      margin: auto;
+      border-radius: 8px;
+      box-shadow: 0 0 10px #ccc;
+    }
+    input, button {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      font-size: 16px;
+    }
+    .success {
+      color: green;
+      font-weight: bold;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Confirm Payment</h2>
+    <p id="tripInfo">Loading trip info...</p>
+
+    <input type="tel" id="phone" placeholder="Enter phone number" required />
+    <button onclick="submitPayment()">Pay Now</button>
+
+    <p id="responseMessage"></p>
+  </div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const tripId = urlParams.get('tripId');
+    const amount = urlParams.get('amount');
+
+    const tripInfo = document.getElementById('tripInfo');
+    const responseMessage = document.getElementById('responseMessage');
+
+    if (!tripId || !amount) {
+      tripInfo.textContent = "Missing payment information.";
+      document.querySelector('button').disabled = true;
+    } else {
+      tripInfo.textContent = `Trip ID: ${tripId} | Fare: ZMW ${amount}`;
+    }
+
+    async function submitPayment() {
+      const phone = document.getElementById('phone').value;
+
+      if (!phone || phone.length < 9) {
+        responseMessage.textContent = "⚠️ Enter a valid phone number.";
+        responseMessage.className = "error";
+        return;
+      }
+
+      const res = await fetch('/api/payments/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tripId,
+          amount,
+          phone,
+          paymentMethod: 'QR'
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        responseMessage.textContent = data.message;
+        responseMessage.className = "success";
+      } else {
+        responseMessage.textContent = data.error || "❌ Payment failed.";
+        responseMessage.className = "error";
+      }
+    }
+  </script>
+</body>
+</html>
