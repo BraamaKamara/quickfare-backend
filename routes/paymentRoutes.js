@@ -4,13 +4,10 @@ const authenticateToken = require('../middleware/authMiddleware');
 const paymentController = require('../controllers/paymentController');
 const { Trip, Payment } = require('../models');
 
-// POST /api/payments — Create a payment (authenticated)
-router.post('/', authenticateToken, paymentController.createPayment);
+// POST /api/payments — Create a payment (public)
+router.post('/', paymentController.createPayment);
 
-// GET /api/payments — List all payments with related trip (authenticated)
-router.get('/', authenticateToken, paymentController.getPayments);
-
-// POST /api/payment/confirm — QR or external payment confirmation (no auth)
+// POST /api/payments/confirm — QR or external payment confirmation (public)
 router.post('/confirm', async (req, res) => {
   try {
     const { tripId, amount, phone, paymentMethod } = req.body;
@@ -36,31 +33,29 @@ router.post('/confirm', async (req, res) => {
     res.status(500).json({ error: 'Server error during confirmation.' });
   }
 });
-// ✅ Check if payment exists
+
+// GET /api/payments/check — Check if a payment exists (public)
 router.get('/check', async (req, res) => {
   const { tripId, phone } = req.query;
-
   if (!tripId || !phone) {
     return res.status(400).json({ message: 'tripId and phone are required' });
   }
-
   try {
-    const payment = await Payment.findOne({
-      where: { tripId, phone }
-    });
-
+    const payment = await Payment.findOne({ where: { tripId, phone } });
     if (!payment) {
       return res.status(404).json({ message: 'Payment not found' });
     }
-
-    res.json({
-      message: '✅ Payment found',
-      payment
-    });
+    res.json({ message: '✅ Payment found', payment });
   } catch (err) {
     console.error('❌ Payment check error:', err);
     res.status(500).json({ message: 'Error checking payment', error: err.message });
   }
 });
+
+// protect everything below with JWT
+router.use(authenticateToken);
+
+// GET /api/payments — List all payments (authenticated)
+router.get('/', paymentController.getPayments);
 
 module.exports = router;
